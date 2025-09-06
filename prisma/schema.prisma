@@ -101,6 +101,9 @@ model Job {
   description   String?
   status        JobStatus @default(QUOTED)
   priority      String    @default("medium") // low, medium, high
+  totalCost     Float     @default(0)
+  depositPaid   Float     @default(0)
+  actualCost    Float     @default(0)
   startDate     DateTime?
   endDate       DateTime?
   completedDate DateTime?
