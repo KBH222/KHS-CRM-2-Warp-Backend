@@ -1,0 +1,246 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User roles enum
+enum Role {
+  OWNER
+  WORKER
+}
+
+// Job status enum
+enum JobStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  WAITING_ON_MATERIALS
+  COMPLETED
+  ON_HOLD
+  QUOTED
+  APPROVED
+  CANCELLED
+}
+
+// User model for authentication and role management
+model User {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  password          String
+  name              String
+  role              Role
+  isActive          Boolean   @default(true)
+  lastLoginAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  createdJobs       Job[]     @relation("JobCreator")
+  assignedJobs      JobAssignment[]
+  refreshTokens     RefreshToken[]
+  activityLogs      ActivityLog[]
+  materialsAdded    Material[] @relation("MaterialAddedBy")
+  materialsPurchased Material[] @relation("MaterialPurchasedBy")
+
+  @@index([email])
+  @@index([role])
+}
+
+// Refresh token for JWT authentication
+model RefreshToken {
+  id          String   @id @default(cuid())
+  token       String   @unique
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([token])
+  @@index([userId])
+}
+
+// Customer model
+model Customer {
+  id          String    @id @default(cuid())
+  reference   String    @unique // Customer reference like "A1", "B2"
+  name        String
+  phone       String?
+  email       String?
+  address     String
+  notes       String?
+  isArchived  Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  jobs        Job[]
+
+  @@index([name])
+  @@index([phone])
+  @@index([address])
+  @@index([reference])
+  @@index([isArchived])
+}
+
+// Job model
+model Job {
+  id            String    @id @default(cuid())
+  title         String
+  description   String?
+  status        JobStatus @default(QUOTED)
+  priority      String    @default("medium") // low, medium, high
+  totalCost     Float     @default(0)
+  depositPaid   Float     @default(0)
+  actualCost    Float     @default(0)
+  startDate     DateTime?
+  endDate       DateTime?
+  completedDate DateTime?
+  notes         String?
+  customerId    String
+  customer      Customer  @relation(fields: [customerId], references: [id])
+  createdById   String?
+  createdBy     User?     @relation("JobCreator", fields: [createdById], references: [id])
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  assignments   JobAssignment[]
+  materials     Material[]
+  statusHistory JobStatusHistory[]
+  activityLogs  ActivityLog[]
+  photos        JobPhoto[]
+  invoices      Invoice[]
+
+  @@index([status])
+  @@index([customerId])
+  @@index([createdById])
+  @@index([startDate])
+  @@index([endDate])
+  @@index([priority])
+}
+
+// Many-to-many relation for job assignments
+model JobAssignment {
+  id          String    @id @default(cuid())
+  jobId       String
+  job         Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  assignedAt  DateTime  @default(now())
+  
+  @@unique([jobId, userId])
+  @@index([jobId])
+  @@index([userId])
+}
+
+// Job status history for audit trail
+model JobStatusHistory {
+  id          String    @id @default(cuid())
+  jobId       String
+  job         Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  fromStatus  JobStatus?
+  toStatus    JobStatus
+  changedBy   String
+  changedAt   DateTime  @default(now())
+  
+  @@index([jobId])
+  @@index([changedAt])
+}
+
+// Material model
+model Material {
+  id            String    @id @default(cuid())
+  jobId         String
+  job           Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  itemName      String
+  quantity      Float
+  unit          String    @default("each")
+  purchased     Boolean   @default(false)
+  notes         String?
+  addedById     String
+  addedBy       User      @relation("MaterialAddedBy", fields: [addedById], references: [id])
+  purchasedById String?
+  purchasedBy   User?     @relation("MaterialPurchasedBy", fields: [purchasedById], references: [id])
+  purchasedAt   DateTime?
+  isDeleted     Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([jobId])
+  @@index([purchased])
+  @@index([isDeleted])
+}
+
+// Activity log for general audit trail
+model ActivityLog {
+  id          String    @id @default(cuid())
+  entityType  String    // "job", "customer", "material", etc.
+  entityId    String
+  action      String    // "created", "updated", "deleted", etc.
+  details     Json?     // Additional context
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  jobId       String?
+  job         Job?      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@index([jobId])
+  @@index([createdAt])
+}
+
+// Sync queue for offline changes
+model SyncQueue {
+  id          String    @id @default(cuid())
+  userId      String
+  operation   String    // "create", "update", "delete"
+  entityType  String    // "customer", "job", "material"
+  entityId    String?
+  payload     Json
+  retryCount  Int       @default(0)
+  status      String    @default("pending") // "pending", "processing", "completed", "failed"
+  error       String?
+  createdAt   DateTime  @default(now())
+  processedAt DateTime?
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// Job photos model
+model JobPhoto {
+  id          String    @id @default(cuid())
+  jobId       String
+  job         Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  url         String
+  caption     String?
+  uploadedBy  String?
+  createdAt   DateTime  @default(now())
+
+  @@index([jobId])
+  @@index([createdAt])
+}
+
+// Invoice model
+model Invoice {
+  id          String    @id @default(cuid())
+  invoiceNumber String  @unique
+  jobId       String
+  job         Job       @relation(fields: [jobId], references: [id])
+  amount      Float
+  status      String    @default("pending") // pending, paid, overdue, cancelled
+  dueDate     DateTime?
+  paidDate    DateTime?
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([jobId])
+  @@index([status])
+  @@index([invoiceNumber])
+}

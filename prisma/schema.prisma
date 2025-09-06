@@ -1,0 +1,367 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User roles enum
+enum Role {
+  OWNER
+  WORKER
+}
+
+// Job status enum
+enum JobStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  WAITING_ON_MATERIALS
+  COMPLETED
+  ON_HOLD
+  QUOTED
+  APPROVED
+  CANCELLED
+}
+
+// Customer type enum
+enum CustomerType {
+  CURRENT
+  LEADS
+}
+
+// User model for authentication and role management
+model User {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  password          String
+  name              String
+  role              Role
+  isActive          Boolean   @default(true)
+  lastLoginAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  createdJobs       Job[]     @relation("JobCreator")
+  assignedJobs      JobAssignment[]
+  refreshTokens     RefreshToken[]
+  activityLogs      ActivityLog[]
+  materialsAdded    Material[] @relation("MaterialAddedBy")
+  materialsPurchased Material[] @relation("MaterialPurchasedBy")
+
+  @@index([email])
+  @@index([role])
+}
+
+// Refresh token for JWT authentication
+model RefreshToken {
+  id          String   @id @default(cuid())
+  token       String   @unique
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([token])
+  @@index([userId])
+}
+
+// Customer model
+model Customer {
+  id           String       @id @default(cuid())
+  reference    String       @unique // Customer reference like "A1", "B2"
+  name         String
+  phone        String?
+  email        String?
+  address      String
+  notes        String?
+  customerType CustomerType @default(CURRENT)
+  isArchived   Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  // Relations
+  jobs        Job[]
+  scheduleEvents ScheduleEvent[]
+
+  @@index([name])
+  @@index([phone])
+  @@index([address])
+  @@index([reference])
+  @@index([isArchived])
+  @@index([customerType])
+}
+
+// Job model
+model Job {
+  id            String    @id @default(cuid())
+  title         String
+  description   String?
+  status        JobStatus @default(QUOTED)
+  priority      String    @default("medium") // low, medium, high
+  startDate     DateTime?
+  endDate       DateTime?
+  completedDate DateTime?
+  notes         String?
+  photos        String?   @db.Text  // JSON array of photos
+  plans         String?   @db.Text  // JSON array of plans
+  tasks         String?   @db.Text  // JSON array of tasks
+  customerId    String
+  customer      Customer  @relation(fields: [customerId], references: [id])
+  createdById   String?
+  createdBy     User?     @relation("JobCreator", fields: [createdById], references: [id])
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  assignments   JobAssignment[]
+  materials     Material[]
+  statusHistory JobStatusHistory[]
+  activityLogs  ActivityLog[]
+
+  @@index([status])
+  @@index([customerId])
+  @@index([createdById])
+  @@index([startDate])
+  @@index([endDate])
+  @@index([priority])
+}
+
+// Many-to-many relation for job assignments
+model JobAssignment {
+  id          String    @id @default(cuid())
+  jobId       String
+  job         Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  assignedAt  DateTime  @default(now())
+  
+  @@unique([jobId, userId])
+  @@index([jobId])
+  @@index([userId])
+}
+
+// Job status history for audit trail
+model JobStatusHistory {
+  id          String    @id @default(cuid())
+  jobId       String
+  job         Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  fromStatus  JobStatus?
+  toStatus    JobStatus
+  changedBy   String
+  changedAt   DateTime  @default(now())
+  
+  @@index([jobId])
+  @@index([changedAt])
+}
+
+// Material model
+model Material {
+  id            String    @id @default(cuid())
+  jobId         String
+  job           Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  itemName      String
+  quantity      Float
+  unit          String    @default("each")
+  purchased     Boolean   @default(false)
+  notes         String?
+  addedById     String
+  addedBy       User      @relation("MaterialAddedBy", fields: [addedById], references: [id])
+  purchasedById String?
+  purchasedBy   User?     @relation("MaterialPurchasedBy", fields: [purchasedById], references: [id])
+  purchasedAt   DateTime?
+  isDeleted     Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([jobId])
+  @@index([purchased])
+  @@index([isDeleted])
+}
+
+// Activity log for general audit trail
+model ActivityLog {
+  id          String    @id @default(cuid())
+  entityType  String    // "job", "customer", "material", etc.
+  entityId    String
+  action      String    // "created", "updated", "deleted", etc.
+  details     Json?     // Additional context
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  jobId       String?
+  job         Job?      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@index([jobId])
+  @@index([createdAt])
+}
+
+// Worker model
+model Worker {
+  id          String    @id @default(cuid())
+  name        String    // Initials/short name like "KBH"
+  fullName    String
+  phone       String
+  email       String
+  specialty   String
+  status      String    @default("Available") // "Available", "On Job", "Off Duty"
+  currentJob  String?
+  color       String
+  notes       String?   @db.Text
+  timesheet   Json?     // Stores the weekly timesheet data
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([name])
+  @@index([status])
+}
+
+// Sync queue for offline changes
+model SyncQueue {
+  id          String    @id @default(cuid())
+  userId      String
+  operation   String    // "create", "update", "delete"
+  entityType  String    // "customer", "job", "material", "worker"
+  entityId    String?
+  payload     Json
+  retryCount  Int       @default(0)
+  status      String    @default("pending") // "pending", "processing", "completed", "failed"
+  error       String?
+  createdAt   DateTime  @default(now())
+  processedAt DateTime?
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// Tool Categories (Demo, Installs, etc.)
+model ToolCategory {
+  id          String    @id @default(cuid())
+  name        String    @unique // "Demo", "Installs", etc.
+  description String?
+  sortOrder   Int       @default(0)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  toolLists   ToolList[]
+
+  @@index([name])
+  @@index([sortOrder])
+}
+
+// Tool Lists (Kitchen, Bathroom, etc.)
+model ToolList {
+  id          String    @id @default(cuid())
+  categoryId  String
+  category    ToolCategory @relation(fields: [categoryId], references: [id])
+  name        String    // "Kitchen", "Bathroom", "Flooring", etc.
+  description String?
+  isProtected Boolean   @default(false) // Cannot be deleted when true
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  items       ToolItem[]
+
+  @@unique([categoryId, name])
+  @@index([categoryId])
+  @@index([sortOrder])
+}
+
+// Individual Tool Items
+model ToolItem {
+  id          String    @id @default(cuid())
+  listId      String
+  list        ToolList  @relation(fields: [listId], references: [id], onDelete: Cascade)
+  name        String
+  quantity    String?   // "1", "2-3", "As needed", etc.
+  isChecked   Boolean   @default(false)
+  notes       String?
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([listId])
+  @@index([sortOrder])
+}
+
+// Standard Operating Procedures
+model SOP {
+  id          String    @id @default(cuid())
+  title       String
+  category    String    // "Safety", "Installation", "Demo", etc.
+  content     String    @db.Text
+  version     String    @default("1.0")
+  isActive    Boolean   @default(true)
+  createdBy   String
+  approvedBy  String?
+  approvedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([category])
+  @@index([title])
+}
+
+// Tool Settings (single record for global settings)
+model ToolSettings {
+  id                String    @id @default(cuid())
+  selectedCategories Json     @default("[]") // Array of selected category names
+  isLocked          Boolean   @default(false)
+  showDemo          Boolean   @default(false)
+  showInstall       Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// KHS Tools Sync Data - for syncing tool states across users
+model KHSToolsSync {
+  id                      String    @id @default("main") // Single record for all users
+  tools                   Json      // Complete tools state with categories and items
+  selectedDemoCategories  Json      @default("[]") // Array of selected demo category names
+  selectedInstallCategories Json   @default("[]") // Array of selected install category names
+  lockedCategories        Json      @default("[]") // Array of locked category names
+  showDemo               Boolean   @default(false)
+  showInstall            Boolean   @default(false)
+  lastUpdatedBy          String?   // User ID who last updated
+  lastUpdated            DateTime  @default(now())
+  version                Int       @default(1) // For conflict resolution
+  dataHash               String?   // SHA256 hash of content for change detection
+  deviceInfo             String?   // Optional device fingerprint
+  
+  @@index([lastUpdated])
+}
+
+// Schedule Events - for personal and work events
+model ScheduleEvent {
+  id            String    @id @default(cuid())
+  title         String
+  description   String?
+  eventType     String    // "personal" or "work"
+  startDate     DateTime
+  endDate       DateTime
+  
+  // For work events
+  customerId    String?
+  customer      Customer?  @relation(fields: [customerId], references: [id])
+  workers       Json?      // Array of worker names
+  
+  // Metadata
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@index([eventType])
+  @@index([startDate])
+  @@index([endDate])
+  @@index([customerId])
+}
+
+
