@@ -196,6 +196,161 @@ app.post('/api/jobs', async (req, res) => {
   }
 });
 
+// Get all workers
+app.get('/api/workers', async (req, res) => {
+  try {
+    const workers = await prisma.worker.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json(workers);
+  } catch (error) {
+    console.error('Error fetching workers:', error);
+    res.status(500).json({ error: 'Failed to fetch workers' });
+  }
+});
+
+// Create worker
+app.post('/api/workers', async (req, res) => {
+  try {
+    const worker = await prisma.worker.create({
+      data: {
+        name: req.body.name,
+        fullName: req.body.fullName || req.body.name,
+        phone: req.body.phone || '',
+        email: req.body.email || '',
+        specialty: req.body.specialty || 'General',
+        status: req.body.status || 'Available',
+        color: req.body.color || '#3B82F6'
+      }
+    });
+    res.status(201).json(worker);
+  } catch (error) {
+    console.error('Error creating worker:', error);
+    res.status(500).json({ error: 'Failed to create worker' });
+  }
+});
+
+// Get all tool categories
+app.get('/api/tools/categories', async (req, res) => {
+  try {
+    const categories = await prisma.toolCategory.findMany({
+      include: {
+        toolLists: {
+          include: {
+            items: true
+          }
+        }
+      },
+      orderBy: { sortOrder: 'asc' }
+    });
+    res.json(categories);
+  } catch (error) {
+    console.error('Error fetching tool categories:', error);
+    res.status(500).json({ error: 'Failed to fetch tool categories' });
+  }
+});
+
+// Get KHS Tools sync data
+app.get('/api/khs-tools-sync', async (req, res) => {
+  try {
+    const syncData = await prisma.kHSToolsSync.findFirst({
+      where: { id: 'main' }
+    });
+    
+    if (!syncData) {
+      // Return default empty state
+      res.json({
+        id: 'main',
+        tools: {},
+        selectedDemoCategories: [],
+        selectedInstallCategories: [],
+        lockedCategories: [],
+        showDemo: false,
+        showInstall: false,
+        version: 1
+      });
+    } else {
+      res.json(syncData);
+    }
+  } catch (error) {
+    console.error('Error fetching KHS tools sync:', error);
+    res.status(500).json({ error: 'Failed to fetch KHS tools sync' });
+  }
+});
+
+// Update KHS Tools sync data
+app.post('/api/khs-tools-sync', async (req, res) => {
+  try {
+    const syncData = await prisma.kHSToolsSync.upsert({
+      where: { id: 'main' },
+      update: {
+        tools: req.body.tools || {},
+        selectedDemoCategories: req.body.selectedDemoCategories || [],
+        selectedInstallCategories: req.body.selectedInstallCategories || [],
+        lockedCategories: req.body.lockedCategories || [],
+        showDemo: req.body.showDemo || false,
+        showInstall: req.body.showInstall || false,
+        lastUpdatedBy: 'admin-id',
+        version: { increment: 1 }
+      },
+      create: {
+        id: 'main',
+        tools: req.body.tools || {},
+        selectedDemoCategories: req.body.selectedDemoCategories || [],
+        selectedInstallCategories: req.body.selectedInstallCategories || [],
+        lockedCategories: req.body.lockedCategories || [],
+        showDemo: req.body.showDemo || false,
+        showInstall: req.body.showInstall || false,
+        lastUpdatedBy: 'admin-id',
+        version: 1
+      }
+    });
+    res.json(syncData);
+  } catch (error) {
+    console.error('Error updating KHS tools sync:', error);
+    res.status(500).json({ error: 'Failed to update KHS tools sync' });
+  }
+});
+
+// Get schedule events
+app.get('/api/schedule', async (req, res) => {
+  try {
+    const events = await prisma.scheduleEvent.findMany({
+      include: {
+        customer: {
+          select: { id: true, name: true, reference: true }
+        }
+      },
+      orderBy: { startDate: 'asc' }
+    });
+    res.json(events);
+  } catch (error) {
+    console.error('Error fetching schedule events:', error);
+    res.status(500).json({ error: 'Failed to fetch schedule events' });
+  }
+});
+
+// Create schedule event
+app.post('/api/schedule', async (req, res) => {
+  try {
+    const event = await prisma.scheduleEvent.create({
+      data: {
+        title: req.body.title,
+        description: req.body.description,
+        eventType: req.body.eventType || 'work',
+        startDate: new Date(req.body.startDate),
+        endDate: new Date(req.body.endDate),
+        customerId: req.body.customerId,
+        workers: req.body.workers || []
+      }
+    });
+    res.status(201).json(event);
+  } catch (error) {
+    console.error('Error creating schedule event:', error);
+    res.status(500).json({ error: 'Failed to create schedule event' });
+  }
+});
+
 // Catch all 404
 app.use((req, res) => {
   res.status(404).json({ error: 'Not found', path: req.path });
