@@ -183,7 +183,10 @@ app.post('/api/jobs', async (req, res) => {
         depositPaid: req.body.depositPaid || 0,
         startDate: req.body.startDate ? new Date(req.body.startDate) : null,
         endDate: req.body.endDate ? new Date(req.body.endDate) : null,
-        notes: req.body.notes
+        notes: req.body.notes,
+        tasks: req.body.tasks ? JSON.stringify(req.body.tasks) : null,
+        photos: req.body.photos ? JSON.stringify(req.body.photos) : null,
+        plans: req.body.plans ? JSON.stringify(req.body.plans) : null
       },
       include: {
         customer: true
@@ -193,6 +196,75 @@ app.post('/api/jobs', async (req, res) => {
   } catch (error) {
     console.error('Error creating job:', error);
     res.status(500).json({ error: 'Failed to create job' });
+  }
+});
+
+// Update job
+app.put('/api/jobs/:id', async (req, res) => {
+  try {
+    const job = await prisma.job.update({
+      where: { id: req.params.id },
+      data: {
+        title: req.body.title,
+        description: req.body.description,
+        status: req.body.status,
+        priority: req.body.priority,
+        totalCost: req.body.totalCost,
+        depositPaid: req.body.depositPaid,
+        startDate: req.body.startDate ? new Date(req.body.startDate) : null,
+        endDate: req.body.endDate ? new Date(req.body.endDate) : null,
+        notes: req.body.notes,
+        tasks: req.body.tasks ? JSON.stringify(req.body.tasks) : null,
+        photos: req.body.photos ? JSON.stringify(req.body.photos) : null,
+        plans: req.body.plans ? JSON.stringify(req.body.plans) : null
+      },
+      include: {
+        customer: true
+      }
+    });
+    res.json(job);
+  } catch (error) {
+    console.error('Error updating job:', error);
+    res.status(500).json({ error: 'Failed to update job' });
+  }
+});
+
+// Get single job
+app.get('/api/jobs/:id', async (req, res) => {
+  try {
+    const job = await prisma.job.findUnique({
+      where: { id: req.params.id },
+      include: {
+        customer: {
+          select: { id: true, reference: true, name: true, address: true }
+        },
+        materials: true,
+        assignments: {
+          include: {
+            user: {
+              select: { id: true, name: true, email: true }
+            }
+          }
+        }
+      }
+    });
+    
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+    
+    // Parse JSON fields
+    const jobWithParsedFields = {
+      ...job,
+      tasks: job.tasks ? JSON.parse(job.tasks) : [],
+      photos: job.photos ? JSON.parse(job.photos) : [],
+      plans: job.plans ? JSON.parse(job.plans) : []
+    };
+    
+    res.json(jobWithParsedFields);
+  } catch (error) {
+    console.error('Error fetching job:', error);
+    res.status(500).json({ error: 'Failed to fetch job' });
   }
 });
 
