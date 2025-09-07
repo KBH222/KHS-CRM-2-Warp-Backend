@@ -50,6 +50,20 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+// Auth check endpoints (mock responses)
+app.get('/api/auth/me', (req, res) => {
+  res.json({
+    id: 'admin-id',
+    email: 'admin@khscrm.com',
+    name: 'Admin User',
+    role: 'OWNER'
+  });
+});
+
+app.get('/api/auth/check', (req, res) => {
+  res.json({ authenticated: true });
+});
+
 // Simple customers endpoint
 app.get('/api/customers', async (req, res) => {
   try {
