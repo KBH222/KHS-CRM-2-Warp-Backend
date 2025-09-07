@@ -488,5 +488,5 @@ app.use((req, res) => {
 // Start server
 const HOST = '0.0.0.0'; // Important for Render!
 app.listen(PORT, HOST, () => {
-  });/ /   F o r c e   d e p l o y m e n t   2 0 2 5 - 0 9 - 0 6   2 3 : 1 8 : 1 7  
- 
+  console.log(`Server running at http://${HOST}:${PORT}`);
+});
