@@ -96,9 +96,9 @@ app.post('/api/customers', async (req, res) => {
     let customerReference = reference;
     if (!customerReference) {
       const count = await prisma.customer.count();
-      const letter = String.fromCharCode(65 + Math.floor(count / 100));
+      const letter = String.fromCharCode(65 + Math.floor(count / 100)); // A, B, C...
       const number = (count % 100) + 1;
-      customerReference = `${letter}${number}`;
+      customerReference = `${letter}${number.toString().padStart(2, '0')}`; // A01, A02, B01...
     }
 
     const customer = await prisma.customer.create({
