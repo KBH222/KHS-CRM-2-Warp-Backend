@@ -22,7 +22,11 @@ app.get('/', (req, res) => {
 });
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ status: 'ok', timestamp: new Date().toISOString(), version: '2.0-DEPLOYED' });
+});
+
+app.get('/api/test-deployment', (req, res) => {
+  res.json({ deployed: true, timestamp: new Date().toISOString(), message: 'New endpoints deployed!' });
 });
 
 // Simple auth endpoint for testing
