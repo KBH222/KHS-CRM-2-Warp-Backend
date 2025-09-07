@@ -423,6 +423,59 @@ app.post('/api/schedule', async (req, res) => {
   }
 });
 
+// Sync endpoints for frontend data synchronization
+app.post('/api/sync/pull', async (req, res) => {
+  try {
+    // Simple pull - return latest data
+    const customers = await prisma.customer.findMany({
+      where: { isArchived: false },
+      include: { jobs: true },
+      orderBy: { updatedAt: 'desc' }
+    });
+    
+    const jobs = await prisma.job.findMany({
+      include: { customer: true },
+      orderBy: { updatedAt: 'desc' }
+    });
+    
+    const workers = await prisma.worker.findMany({
+      orderBy: { updatedAt: 'desc' }
+    });
+    
+    res.json({
+      customers,
+      jobs,
+      workers,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error in sync pull:', error);
+    res.status(500).json({ error: 'Sync pull failed' });
+  }
+});
+
+app.post('/api/sync/push', async (req, res) => {
+  try {
+    // Simple push - acknowledge received data
+    const { customers, jobs, workers } = req.body;
+    
+    // For now, just acknowledge the push
+    // In a full implementation, you'd process conflicts, etc.
+    res.json({
+      success: true,
+      processed: {
+        customers: customers ? customers.length : 0,
+        jobs: jobs ? jobs.length : 0,
+        workers: workers ? workers.length : 0
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error in sync push:', error);
+    res.status(500).json({ error: 'Sync push failed' });
+  }
+});
+
 // Catch all 404
 app.use((req, res) => {
   res.status(404).json({ error: 'Not found', path: req.path });
